@@ -1,4 +1,16 @@
 import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from datetime import datetime
+
+# Assuming your dataframe is named `race_results_cleaned` and has a column 'Start Time' with time strings
+def time_to_float(time_string):
+    # Parse time string to a datetime object
+    time_obj = datetime.strptime(time_string, '%I:%M %p')
+    # Convert to total hours as a float
+    return time_obj.hour + time_obj.minute / 60
 
 # Let's try to load the CSV file to see what the dataset looks like.
 file_path = './data/race_results.csv'
@@ -25,3 +37,64 @@ data_types = race_results_cleaned.dtypes
 # We also want to make sure that the 'Finish Time (minutes)' is in the dataframe since it's our target variable.
 # If it has been dropped due to missing values, we need to reconsider our strategy.
 finish_time_included = 'Finish Time (minutes)' in race_results_cleaned.columns
+
+# Drop 'Race Name' and 'Start Time' columns as they are not likely to be useful for our model
+#race_results_cleaned = race_results_cleaned.drop(['Race Name', 'Start Time'], axis=1)
+
+# Convert 'Date' to datetime and create a numerical feature from it (e.g., days since the first race in the dataset)
+race_results_cleaned['Date'] = pd.to_datetime(race_results_cleaned['Date'])
+race_results_cleaned['Days Since First Race'] = (race_results_cleaned['Date'] - race_results_cleaned['Date'].min()).dt.days
+
+# One-hot encode the 'Condition' categorical variable
+# First, we instantiate the encoder
+encoder = OneHotEncoder(drop='first')
+
+# Perform one-hot encoding and convert to a dataframe
+encoded_conditions = encoder.fit_transform(race_results_cleaned[['Condition']]).toarray()
+encoded_conditions_df = pd.DataFrame(encoded_conditions, columns=encoder.get_feature_names_out(['Condition']))
+
+# Join the encoded dataframe with the original one and drop the original 'Condition' column
+race_results_cleaned = race_results_cleaned.join(encoded_conditions_df).drop('Condition', axis=1)
+race_results_cleaned['Start Time Float'] = race_results_cleaned['Start Time'].apply(time_to_float)
+
+race_results_cleaned = race_results_cleaned.drop(['Race Name', 'Date', 'Start Time'], axis=1)
+
+# Calculate pace: finish time per mile
+race_results_cleaned['Pace per Mile'] = race_results_cleaned['Finish Time (minutes)'] / race_results_cleaned['Distance (miles)']
+
+# Define the new target variable y as 'Pace per Mile'
+y = race_results_cleaned['Pace per Mile']
+
+# Drop the original 'Finish Time (minutes)' and 'Pace per Mile' from the features
+X = race_results_cleaned.drop(['Finish Time (minutes)', 'Pace per Mile'], axis=1)
+
+# Split the data into training and validation sets (80% train, 20% validation)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
+
+
+# # Now we split the data into features (X) and target (y)
+# X = race_results_cleaned.drop('Finish Time (minutes)', axis=1)
+# y = race_results_cleaned['Finish Time (minutes)']
+
+# # Split the data into training and validation sets (80% train, 20% validation)
+# X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Initialize the Linear Regression model
+lin_reg_model = LinearRegression()
+
+# Fit the model to the training data
+lin_reg_model.fit(X_train, y_train)
+
+# Predict on the validation set
+y_val_pred = lin_reg_model.predict(X_val)
+
+# Calculate performance metrics
+mse = mean_squared_error(y_val, y_val_pred)
+mae = mean_absolute_error(y_val, y_val_pred)
+r2 = r2_score(y_val, y_val_pred)
+
+print('Mean Squared Error:', mse)
+print('Mean Absolute Error:', mae)
+print('R^2 Score:', r2)
