@@ -13,6 +13,7 @@ from sklearn.svm import SVR
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.feature_selection import SelectFromModel
 from sklearn.feature_selection import SelectKBest, f_regression
+import numpy as np
 
 # Base models
 estimators = [
@@ -84,6 +85,13 @@ race_results_cleaned['Pace per Mile'] = race_results_cleaned['Finish Time (minut
 
 race_results_cleaned = race_results_cleaned.drop(['Race Name', 'Date', 'Start Time', 'Finish Time (minutes)'], axis=1)
 
+# 데이터 프레임을 CSV 파일로 저장
+race_results_cleaned.to_csv('processed_race_results.csv', index=False)
+
+numerical_features = race_results_cleaned.select_dtypes(include=['float64', 'int64']).columns.tolist()
+for column in numerical_features:
+    race_results_cleaned[column] = race_results_cleaned[column].apply(lambda x: np.log(x+1))
+
 # Define the new target variable y as 'Pace per Mile'
 y = race_results_cleaned['Pace per Mile']
 
@@ -152,49 +160,49 @@ selected_features_indices = sfm.get_support(indices=True)
 selected_feature_names = X_train.columns[selected_features_indices]
 print("Selected features:", selected_feature_names)
 
-# # Fit the model to the training data
-# rf_reg_model.fit(X_train, y_train)
-
-# # Predict on the validation set
-# y_val_pred = rf_reg_model.predict(X_val)
-
-# # Calculate performance metrics
-# rf_mse = mean_squared_error(y_val, y_val_pred)
-# rf_mae = mean_absolute_error(y_val, y_val_pred)
-# rf_r2 = r2_score(y_val, y_val_pred)
-
-# print('Random Forest Regressor Mean Squared Error:', rf_mse)
-# print('Random Forest Regressor Mean Absolute Error:', rf_mae)
-# print('Random Forest Regressor R^2 Score:', rf_r2)
-
-
-# Train the model using the scaled data
-rf_reg_model.fit(X_train_selected, y_train)
-
-# Predict on the scaled validation set
-y_val_pred = rf_reg_model.predict(X_val_selected)
-
-# Calculate performance metrics
-rf_mse_scaled = mean_squared_error(y_val, y_val_pred)
-rf_mae_scaled = mean_absolute_error(y_val, y_val_pred)
-rf_r2_scaled = r2_score(y_val, y_val_pred)
-
-print('Random Forest Regressor with Scaled Data - Mean Squared Error:', rf_mse_scaled)
-print('Random Forest Regressor with Scaled Data - Mean Absolute Error:', rf_mae_scaled)
-print('Random Forest Regressor with Scaled Data - R^2 Score:', rf_r2_scaled)
-
-
-# Fit the stacking ensemble
-stack_reg.fit(X_train_scaled, y_train)
+# Fit the model to the training data
+rf_reg_model.fit(X_train, y_train)
 
 # Predict on the validation set
-y_val_pred = stack_reg.predict(X_val_scaled)
+y_val_pred = rf_reg_model.predict(X_val)
 
 # Calculate performance metrics
-stack_mse = mean_squared_error(y_val, y_val_pred)
-stack_mae = mean_absolute_error(y_val, y_val_pred)
-stack_r2 = r2_score(y_val, y_val_pred)
+rf_mse = mean_squared_error(y_val, y_val_pred)
+rf_mae = mean_absolute_error(y_val, y_val_pred)
+rf_r2 = r2_score(y_val, y_val_pred)
 
-print('Stacking Regressor Mean Squared Error:', stack_mse)
-print('Stacking Regressor Mean Absolute Error:', stack_mae)
-print('Stacking Regressor R^2 Score:', stack_r2)
+print('Random Forest Regressor Mean Squared Error:', rf_mse)
+print('Random Forest Regressor Mean Absolute Error:', rf_mae)
+print('Random Forest Regressor R^2 Score:', rf_r2)
+
+
+# # Train the model using the scaled data
+# rf_reg_model.fit(X_train_selected, y_train)
+
+# # Predict on the scaled validation set
+# y_val_pred = rf_reg_model.predict(X_val_selected)
+
+# # Calculate performance metrics
+# rf_mse_scaled = mean_squared_error(y_val, y_val_pred)
+# rf_mae_scaled = mean_absolute_error(y_val, y_val_pred)
+# rf_r2_scaled = r2_score(y_val, y_val_pred)
+
+# print('Random Forest Regressor with Scaled Data - Mean Squared Error:', rf_mse_scaled)
+# print('Random Forest Regressor with Scaled Data - Mean Absolute Error:', rf_mae_scaled)
+# print('Random Forest Regressor with Scaled Data - R^2 Score:', rf_r2_scaled)
+
+
+# # Fit the stacking ensemble
+# stack_reg.fit(X_train_scaled, y_train)
+
+# # Predict on the validation set
+# y_val_pred = stack_reg.predict(X_val_scaled)
+
+# # Calculate performance metrics
+# stack_mse = mean_squared_error(y_val, y_val_pred)
+# stack_mae = mean_absolute_error(y_val, y_val_pred)
+# stack_r2 = r2_score(y_val, y_val_pred)
+
+# print('Stacking Regressor Mean Squared Error:', stack_mse)
+# print('Stacking Regressor Mean Absolute Error:', stack_mae)
+# print('Stacking Regressor R^2 Score:', stack_r2)
