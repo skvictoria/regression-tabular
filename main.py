@@ -15,19 +15,6 @@ from sklearn.feature_selection import SelectFromModel
 from sklearn.feature_selection import SelectKBest, f_regression
 import numpy as np
 
-# Base models
-estimators = [
-    ('rf', RandomForestRegressor(n_estimators=10, random_state=42)),
-    ('svr', make_pipeline(StandardScaler(), SVR())),
-    ('dt', DecisionTreeRegressor())
-]
-
-# Stacking ensemble
-stack_reg = StackingRegressor(
-    estimators=estimators,
-    final_estimator=LinearRegression()
-)
-
 # Assuming your dataframe is named `race_results_cleaned` and has a column 'Start Time' with time strings
 def time_to_float(time_string):
     # Parse time string to a datetime object
@@ -43,6 +30,16 @@ race_results = pd.read_csv(file_path)
 
 # Display the first few rows of the dataframe
 race_results.head()
+
+encoder = OneHotEncoder()
+teaching_encoded = encoder.fit_transform(race_results[['Teaching?']]).toarray()
+race_results = race_results.join(pd.DataFrame(teaching_encoded, columns=encoder.get_feature_names_out()))
+
+# 로그 변환 및 스케일링 for 'Age of youngest child(days)'
+scaler = StandardScaler()
+race_results['Age of youngest child (Days)'] = np.log1p(race_results['Age of youngest child (Days)'])
+race_results['Age of youngest child (Days)'] = scaler.fit_transform(race_results[['Age of youngest child (Days)']])
+
 
 # First, we will drop the first row as it contains NaN values across all columns which indicates it might be an error.
 race_results_cleaned = race_results.dropna(how='all')
@@ -83,7 +80,7 @@ race_results_cleaned['Start Time Float'] = race_results_cleaned['Start Time'].ap
 # Calculate pace: finish time per mile
 race_results_cleaned['Pace per Mile'] = race_results_cleaned['Finish Time (minutes)'] / race_results_cleaned['Distance (miles)']
 
-race_results_cleaned = race_results_cleaned.drop(['Race Name', 'Date', 'Start Time', 'Finish Time (minutes)', 'Teaching?', 'Age of youngest child (Days)'], axis=1)
+race_results_cleaned = race_results_cleaned.drop(['Race Name', 'Date', 'Start Time', 'Finish Time (minutes)', 'Teaching?', 'Age of youngest child (Days)', 'Teaching?_No','Teaching?_Yes'], axis=1)
 
 # 데이터 프레임을 CSV 파일로 저장
 race_results_cleaned.to_csv('processed_race_results.csv', index=False)
@@ -92,11 +89,30 @@ numerical_features = race_results_cleaned.select_dtypes(include=['float64', 'int
 for column in numerical_features:
     race_results_cleaned[column] = race_results_cleaned[column].apply(lambda x: np.log(x+1))
 
+x_test = race_results_cleaned.iloc[-1]
+y_test = x_test['Pace per Mile']
+x_test = x_test.drop(['Pace per Mile'])
+race_results.drop(race_results_cleaned.index[-1], inplace=True)
+
+print(x_test, y_test)
+
 # Define the new target variable y as 'Pace per Mile'
 y = race_results_cleaned['Pace per Mile']
 
 # Drop the original 'Finish Time (minutes)' and 'Pace per Mile' from the features
 X = race_results_cleaned.drop(['Pace per Mile'], axis=1)
+
+
+#X = race_results_cleaned.iloc[:, :-1]  # All columns except the last one as features
+#y = race_results_cleaned.iloc[:, -1]   # The last column as the target variable
+
+# Reset the index to ensure proper alignment
+X.reset_index(drop=True, inplace=True)
+y.reset_index(drop=True, inplace=True)
+
+# Separate the last row for testing
+X, x_test = X.iloc[:-1], X.iloc[-1:]
+y, y_test = y.iloc[:-1], y.iloc[-1]
 
 # Split the data into training and validation sets (80% train, 20% validation)
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -105,66 +121,17 @@ X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_st
 # Initialize the scaler
 scaler = StandardScaler()
 
-# Fit the scaler to the training data and transform it
-X_train_scaled = scaler.fit_transform(X_train)
-
-# Apply the same transformation to the validation data
-X_val_scaled = scaler.transform(X_val)
-
-
-selector = SelectKBest(score_func=f_regression, k=10)  # 'k'는 선택할 피처의 수
-
-# Fit the selector to the training data and transform it
-X_train_selected = selector.fit_transform(X_train, y_train)
-
-# Apply the same transformation to the validation data
-X_val_selected = selector.transform(X_val)
-
-# Print the selected feature indices
-selected_features_indices = selector.get_support(indices=True)
-selected_feature_names = X_train.columns[selected_features_indices]
-print("Selected features:", selected_feature_names)
-
-
-
-# # Initialize the Linear Regression model
-# lin_reg_model = LinearRegression()
-
-# # Fit the model to the training data
-# lin_reg_model.fit(X_train, y_train)
-
-# # Predict on the validation set
-# y_val_pred = lin_reg_model.predict(X_val)
-
-# # Calculate performance metrics
-# mse = mean_squared_error(y_val, y_val_pred)
-# mae = mean_absolute_error(y_val, y_val_pred)
-# r2 = r2_score(y_val, y_val_pred)
-
-# print('Mean Squared Error:', mse)
-# print('Mean Absolute Error:', mae)
-# print('R^2 Score:', r2)
 
 # Initialize the Random Forest Regressor
 rf_reg_model = RandomForestRegressor(random_state=42)
-sfm = SelectFromModel(estimator=rf_reg_model)
-
-# Fit the model to the training data and transform it
-X_train_selected = sfm.fit_transform(X_train_scaled, y_train)
-
-# Apply the same transformation to the validation data
-X_val_selected = sfm.transform(X_val_scaled)
-
-# Find the features that were selected
-selected_features_indices = sfm.get_support(indices=True)
-selected_feature_names = X_train.columns[selected_features_indices]
-print("Selected features:", selected_feature_names)
-
 # Fit the model to the training data
 rf_reg_model.fit(X_train, y_train)
 
 # Predict on the validation set
 y_val_pred = rf_reg_model.predict(X_val)
+print(X_val)
+print(y_val)
+print(y_val_pred)
 
 # Calculate performance metrics
 rf_mse = mean_squared_error(y_val, y_val_pred)
@@ -175,34 +142,21 @@ print('Random Forest Regressor Mean Squared Error:', rf_mse)
 print('Random Forest Regressor Mean Absolute Error:', rf_mae)
 print('Random Forest Regressor R^2 Score:', rf_r2)
 
+# x_test에 대한 예측
+predicted_finish_time = rf_reg_model.predict(x_test)
+print('Predicted Finish Time for last entry:', predicted_finish_time)
+original_value = np.exp(predicted_finish_time) - 1
+print(3.1*original_value)
+#print(3.1*(np.exp(1.948212)-1))
 
-# # Train the model using the scaled data
-# rf_reg_model.fit(X_train_selected, y_train)
+# For confidence intervals, you can use the bootstrapping method:
+import seaborn as sns
 
-# # Predict on the scaled validation set
-# y_val_pred = rf_reg_model.predict(X_val_selected)
+# Bootstrap your predictions to get a distribution
+predictions = [rf_reg_model.predict(x_test.values.reshape(1, -1)) for _ in range(1000)]
 
-# # Calculate performance metrics
-# rf_mse_scaled = mean_squared_error(y_val, y_val_pred)
-# rf_mae_scaled = mean_absolute_error(y_val, y_val_pred)
-# rf_r2_scaled = r2_score(y_val, y_val_pred)
+# Calculate the confidence intervals from the distribution of predictions
+ci_lower = np.percentile(predictions, 2.5)
+ci_upper = np.percentile(predictions, 97.5)
 
-# print('Random Forest Regressor with Scaled Data - Mean Squared Error:', rf_mse_scaled)
-# print('Random Forest Regressor with Scaled Data - Mean Absolute Error:', rf_mae_scaled)
-# print('Random Forest Regressor with Scaled Data - R^2 Score:', rf_r2_scaled)
-
-
-# # Fit the stacking ensemble
-# stack_reg.fit(X_train_scaled, y_train)
-
-# # Predict on the validation set
-# y_val_pred = stack_reg.predict(X_val_scaled)
-
-# # Calculate performance metrics
-# stack_mse = mean_squared_error(y_val, y_val_pred)
-# stack_mae = mean_absolute_error(y_val, y_val_pred)
-# stack_r2 = r2_score(y_val, y_val_pred)
-
-# print('Stacking Regressor Mean Squared Error:', stack_mse)
-# print('Stacking Regressor Mean Absolute Error:', stack_mae)
-# print('Stacking Regressor R^2 Score:', stack_r2)
+print(f'95% confidence interval for the predictions: [{ci_lower}, {ci_upper}]')
